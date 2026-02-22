@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Tenant {
+  id String @id @default(cuid())
+  name String @unique
+  email String @unique
+  phone String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoicePrefix String @unique
+
+  user User[]
+  inventory Inventory[]
+  sales Sales[]
+  purchases Purchases[]
+  purchasesPayment PurchasePayment[]
+  supplier Supplier[]
+  return PurchaseReturn[]
+
+  invoiceCounters InvoiceCounter[]
+}
+
+model InvoiceCounter {
+  id String @id @default(cuid())
+  year Int
+  lastNumber Int @default(0)
+  
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, year])
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+model User {
+  id String @id @default(cuid())
+  username String
+  password String
+  role UserRole @default(STAFF)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  sales Sales[] @relation("IssuedBy")
+  deletedSales Sales[] @relation("DeletedBy")
+  editedSales Sales[] @relation("EditedBy")
+
+  purchases Purchases[] @relation("RecordedBy")
+  deletePurchases Purchases[] @relation("DeletedBy")
+  editedPurchases Purchases[] @relation("EditedBy")
+  purchasePayments PurchasePayment[]
+
+  retur PurchaseReturn[]
+
+  @@unique([tenantId, username])
+  @@index([tenantId])
+}
+
+model Inventory {
+  id String @id @default(cuid())
+  name String
+  slug String
+  code String
+  description String?
+  price Int @default(0)
+  cost Int @default(0)
+  stock Int @default(0)
+  sold Int @default(0)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  saleItems SaleItems[]
+  purchaseItems PurchaseItems[]
+  ledgers StockLedger[]
+  retur PurchaseReturnItem[]
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, code])
+  @@index([tenantId, name])
+  @@index([tenantId, code])
+}
+
+enum Payment {
+  CASH
+  CREDITCARD
+  QRIS
+  TRANSFER
+}
+
+model Sales {
+  id String @id @default(cuid())
+  invoice String
+  totalAmount Int
+  method Payment
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isDeleted Boolean @default(false)
+  deletedAt DateTime?
+  deleteBy String?
+  deleteUser User? @relation("DeletedBy", fields: [deleteBy], references:[id])
+
+  isEdited Boolean @default(false)
+  editedAt DateTime?
+  editedBy String?
+  editUser User? @relation("EditedBy", fields: [editedBy], references: [id])
+
+  items SaleItems[]
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references:[id])
+
+  issueBy String
+  user User @relation("IssuedBy",fields: [issueBy], references: [id])
+
+  @@unique([tenantId, invoice])
+}
+
+model SaleItems {
+  id String @id @default(cuid())
+  quantity Int
+  unitPrice Int
+  subTotal Int
+
+  saleId String
+  sale Sales @relation(fields: [saleId], references:[id])
+
+  inventoryId String
+  inventory Inventory @relation(fields:[inventoryId], references:[id])
+}
+
+model Supplier {
+  id String @id @default(cuid())
+  name String
+  email String?
+  phone String?
+  address String?
+  createdAt DateTime @default(now())
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  purchases Purchases[]
+  @@unique([tenantId, name])
+  @@unique([tenantId, email])
+}
+
+enum PurchaseStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+model PurchasePayment {
+  id String @id @default(cuid())
+  amount Int
+  method Payment
+  paidAt DateTime @default(now())
+  note String?
+
+  purchaseId String
+  purchase Purchases @relation(fields: [purchaseId], references: [id])
+
+  recordedBy String
+  user User @relation(fields: [recordedBy], references: [id])
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([purchaseId])
+}
+
+model Purchases {
+  id String @id @default(cuid())
+  invoice String
+  totalAmount Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  paidAmount Int @default(0)
+  status PurchaseStatus @default(UNPAID)
+
+  recordedBy String
+  user User @relation("RecordedBy", fields: [recordedBy], references: [id])
+
+  isDeleted Boolean @default(false)
+  deletedAt DateTime?
+  deleteBy String?
+  deleteUser User? @relation("DeletedBy", fields: [deleteBy], references: [id])
+
+  isEdited Boolean @default(false)
+  editedAt DateTime?
+  editedBy String?
+  editUser User? @relation("EditedBy", fields: [editedBy], references: [id])
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])  
+
+  supplierId String
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  payments PurchasePayment[]
+
+  items PurchaseItems[]
+
+  retur PurchaseReturn[]
+
+  @@unique([tenantId, invoice])
+}
+
+model PurchaseItems {
+  id String @id @default(cuid())
+  quantity Int
+  unitCost Int
+  subTotal Int
+
+  purchaseId String
+  purchases Purchases @relation(fields: [purchaseId], references: [id])
+
+  inventoryId String
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+
+  retur PurchaseReturnItem[]
+}
+
+enum ReturStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DONE
+}
+
+model PurchaseReturn {
+  id String @id @default(cuid())  
+  reason String
+  status ReturStatus @default(REQUESTED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requestedBy String
+  user User @relation(fields: [requestedBy], references: [id])
+
+  purchaseId String
+  purchases Purchases @relation(fields: [purchaseId], references: [id])
+
+  tenantId String
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  items PurchaseReturnItem[]
+
+  @@index([tenantId])
+  @@index([purchaseId])
+}
+
+model PurchaseReturnItem {
+  id String @id @default(cuid())
+  quantity Int
+  unitCost Int
+  subTotal Int
+
+  returId String
+  retur PurchaseReturn @relation(fields: [returId], references: [id])
+
+  purchaseItemId String
+  purchaseItem PurchaseItems @relation(fields: [purchaseItemId], references: [id])
+
+  inventoryId String
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+}
+
+enum LedgerType {
+  PURCHASE
+  SALE
+  CANCEL_PURCHASE
+  CANCEL_SALE
+  RETURN
+  ADJUST
+  EDIT_SALE_RESTORE
+  EDIT_SALE_APPLY
+}
+
+model StockLedger {
+  id String @id @default(cuid())
+  type LedgerType
+  quantity Int
+  stockBefore Int
+  stockAfter Int
+  costBefore Int
+  costAfter Int
+  refId String
+  note String?
+  createdAt DateTime @default(now())
+  tenantId String
+
+  inventoryId String
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+
+  @@index([tenantId])
+  @@index([inventoryId])
+  @@index([refId])
+  @@index([createdAt])
+}
